@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "liveframegateway"
+version = "0.1.0"
+description = "Backend-agnostic live frame gateway for VLM and embodied agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "LiveFrameGateway contributors"}]
+dependencies = [
+  "aiohttp>=3.9",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "pytest-aiohttp>=1.0",
+]
+
+[project.scripts]
+liveframegateway = "liveframegateway.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
