@@ -58,6 +58,7 @@ def test_robot_metadata_survives_round_trip():
                 "frame_uuid": "f1",
                 "ts_ms": 1,
                 "pose_state": {"body_yaw_deg": 12.5},
+                "motion_state": {"speed": 0.4},
                 "scan_phase": "sweep_left",
                 "coverage_bin": "yaw_1",
                 "quality": {"blur_score": 0.2},
@@ -67,6 +68,9 @@ def test_robot_metadata_survives_round_trip():
 
     frames = asyncio.run(run())
     assert frames[0]["pose_state"]["body_yaw_deg"] == 12.5
-    assert frames[0]["scan_phase"] == "sweep_left"
-    assert frames[0]["coverage_bin"] == "yaw_1"
+    assert frames[0]["motion_state"]["speed"] == 0.4
+    assert frames[0]["robot_ext"]["scan_phase"] == "sweep_left"
+    assert frames[0]["robot_ext"]["coverage_bin"] == "yaw_1"
     assert frames[0]["quality"]["blur_score"] == 0.2
+    assert "scan_phase" not in frames[0]
+    assert "coverage_bin" not in frames[0]

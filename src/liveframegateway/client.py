@@ -20,12 +20,7 @@ class FrameGatewayFrame:
     device_id: str = ""
     user_id: str = ""
     seq: int | None = None
-    behavior_chunk_id: str = ""
-    behavior_episode_id: str = ""
-    scan_plan_id: str = ""
-    scan_phase: str = ""
-    coverage_bin: str = ""
-    target_pose: dict[str, Any] = field(default_factory=dict)
+    robot_ext: dict[str, Any] = field(default_factory=dict)
     pose_state: dict[str, Any] = field(default_factory=dict)
     motion_state: dict[str, Any] = field(default_factory=dict)
     quality: dict[str, Any] = field(default_factory=dict)
@@ -46,12 +41,7 @@ class FrameGatewayFrame:
             device_id=str(payload.get("device_id") or "").strip(),
             user_id=str(payload.get("user_id") or "").strip(),
             seq=_optional_int(payload.get("seq")),
-            behavior_chunk_id=str(payload.get("behavior_chunk_id") or "").strip(),
-            behavior_episode_id=str(payload.get("behavior_episode_id") or "").strip(),
-            scan_plan_id=str(payload.get("scan_plan_id") or "").strip(),
-            scan_phase=str(payload.get("scan_phase") or "").strip(),
-            coverage_bin=str(payload.get("coverage_bin") or "").strip(),
-            target_pose=dict(payload.get("target_pose") or {}) if isinstance(payload.get("target_pose"), dict) else {},
+            robot_ext=dict(payload.get("robot_ext") or {}) if isinstance(payload.get("robot_ext"), dict) else {},
             pose_state=dict(payload.get("pose_state") or {}) if isinstance(payload.get("pose_state"), dict) else {},
             motion_state=dict(payload.get("motion_state") or {}) if isinstance(payload.get("motion_state"), dict) else {},
             quality=dict(payload.get("quality") or {}) if isinstance(payload.get("quality"), dict) else {},

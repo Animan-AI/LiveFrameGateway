@@ -1,4 +1,4 @@
-from liveframegateway.client import FrameGatewayClient
+from liveframegateway.client import FrameGatewayClient, FrameGatewayFrame
 from liveframegateway.service import create_app
 
 
@@ -23,3 +23,18 @@ async def test_client_ingest_and_latest(aiohttp_server):
     assert frame.frame_uuid == "f1"
     assert latest[0].frame_uuid == "f1"
     assert latest[0].pose_state["body_yaw_deg"] == 1.0
+
+
+def test_frame_gateway_frame_uses_robot_ext():
+    payload = {
+        "session_id": "sess",
+        "frame_uuid": "f1",
+        "robot_ext": {"scan_phase": "sweep_left"},
+        "pose_state": {"body_yaw_deg": 1.0},
+    }
+
+    frame = FrameGatewayFrame.from_payload(payload)
+
+    assert frame.robot_ext == {"scan_phase": "sweep_left"}
+    assert frame.pose_state == {"body_yaw_deg": 1.0}
+    assert "robot_ext" in frame.to_dict()

@@ -5,19 +5,22 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-ROBOT_METADATA_KEYS = (
+CORE_METADATA_KEYS = (
     "device_id",
     "user_id",
     "seq",
+    "pose_state",
+    "motion_state",
+    "quality",
+)
+
+ROBOT_EXT_KEYS = (
     "behavior_chunk_id",
     "behavior_episode_id",
     "scan_plan_id",
     "scan_phase",
     "coverage_bin",
     "target_pose",
-    "pose_state",
-    "motion_state",
-    "quality",
 )
 
 
@@ -67,10 +70,20 @@ def normalize_frame_payload(session_id: str, payload: dict[str, Any]) -> FrameRe
         image_url = f"data:{mime_type};base64,{image_base64}"
 
     metadata = {}
-    for key in ROBOT_METADATA_KEYS:
+    for key in CORE_METADATA_KEYS:
         value = payload.get(key)
         if value not in (None, "", [], {}):
             metadata[key] = deepcopy(value)
+
+    robot_ext = {}
+    if isinstance(payload.get("robot_ext"), dict):
+        robot_ext.update(deepcopy(payload["robot_ext"]))
+    for key in ROBOT_EXT_KEYS:
+        value = payload.get(key)
+        if value not in (None, "", [], {}):
+            robot_ext[key] = deepcopy(value)
+    if robot_ext:
+        metadata["robot_ext"] = robot_ext
 
     return FrameRecord(
         session_id=normalized_session_id,
