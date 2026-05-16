@@ -7,6 +7,7 @@ from copy import deepcopy
 from typing import Any, Awaitable, Callable
 
 from .models import FrameRecord, normalize_frame_payload
+from .selection import select_frames
 
 EvictCallable = Callable[[dict[str, Any]], Awaitable[None] | None]
 PrimerCallable = Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]]
@@ -102,3 +103,29 @@ class FrameRingBufferStore:
             bucket = [item for item in bucket if item.status == normalized_status]
         effective_limit = max(1, int(limit or 1))
         return [item.to_dict() for item in bucket[-effective_limit:]]
+
+    async def select_frames(
+        self,
+        session_id: str,
+        limit: int = 1,
+        policy: str = "latest",
+        status: str = "ready",
+        min_speed: float = 0.01,
+        min_angular_speed: float = 0.01,
+    ) -> list[dict[str, Any]]:
+        normalized_session_id = str(session_id or "").strip()
+        if not normalized_session_id:
+            return []
+        normalized_status = str(status or "").strip().lower()
+        async with self._lock:
+            bucket = list(self._sessions.get(normalized_session_id, ()))
+        if normalized_status:
+            bucket = [item for item in bucket if item.status == normalized_status]
+        frames = [item.to_dict() for item in bucket]
+        return select_frames(
+            frames,
+            limit=limit,
+            policy=policy,
+            min_speed=min_speed,
+            min_angular_speed=min_angular_speed,
+        )

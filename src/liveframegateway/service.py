@@ -100,8 +100,35 @@ def create_app(
         frames = await request.app[FRAME_STORE_KEY].get_latest_frames(session_id, limit=limit, status=status)
         return web.json_response({"frames": frames})
 
+    async def select(request: web.Request) -> web.Response:
+        session_id = str(request.match_info.get("session_id") or "").strip()
+        try:
+            limit = max(1, int(request.query.get("limit", "1")))
+        except (TypeError, ValueError):
+            limit = 1
+        policy = str(request.query.get("policy", "latest") or "latest").strip().lower() or "latest"
+        status = str(request.query.get("status", "ready") or "ready").strip()
+        try:
+            min_speed = float(request.query.get("min_speed", "0.01"))
+        except (TypeError, ValueError):
+            min_speed = 0.01
+        try:
+            min_angular_speed = float(request.query.get("min_angular_speed", "0.01"))
+        except (TypeError, ValueError):
+            min_angular_speed = 0.01
+        frames = await request.app[FRAME_STORE_KEY].select_frames(
+            session_id,
+            limit=limit,
+            policy=policy,
+            status=status,
+            min_speed=min_speed,
+            min_angular_speed=min_angular_speed,
+        )
+        return web.json_response({"policy": policy, "frames": frames})
+
     app.router.add_get("/health", health)
     app.router.add_post("/sessions/{session_id}/frames", ingest)
     app.router.add_get("/sessions/{session_id}/frames/latest", latest)
+    app.router.add_get("/sessions/{session_id}/frames/select", select)
     app.on_startup.append(startup)
     return app

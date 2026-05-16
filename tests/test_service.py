@@ -46,3 +46,27 @@ async def test_service_primer_failure_returns_502(aiohttp_client):
         json={"frame_uuid": "f1", "image_base64": "ZmFrZQ=="},
     )
     assert resp.status == 502
+
+
+async def test_service_select_frames_by_quality(aiohttp_client):
+    app = create_app(ring_size=5)
+    client = await aiohttp_client(app)
+    await client.post(
+        "/sessions/sess/frames",
+        json={"frame_uuid": "f1", "ts_ms": 1, "quality": {"blur_score": 0.9, "confidence": 0.2}},
+    )
+    await client.post(
+        "/sessions/sess/frames",
+        json={"frame_uuid": "f2", "ts_ms": 2, "quality": {"blur_score": 0.1, "confidence": 0.8}},
+    )
+    await client.post(
+        "/sessions/sess/frames",
+        json={"frame_uuid": "f3", "ts_ms": 3, "quality": {"blur_score": 0.2, "confidence": 0.9}},
+    )
+
+    resp = await client.get("/sessions/sess/frames/select", params={"limit": "2", "policy": "quality"})
+
+    assert resp.status == 200
+    payload = await resp.json()
+    assert payload["policy"] == "quality"
+    assert [frame["frame_uuid"] for frame in payload["frames"]] == ["f2", "f3"]

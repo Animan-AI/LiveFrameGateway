@@ -96,6 +96,32 @@ class FrameGatewayClient:
         raw_frames = data.get("frames", []) if isinstance(data, dict) else []
         return [FrameGatewayFrame.from_payload(item) for item in raw_frames if isinstance(item, dict)]
 
+    async def select_frames(
+        self,
+        session_id: str,
+        n: int = 1,
+        policy: str = "latest",
+        status: str = "ready",
+        min_speed: float = 0.01,
+        min_angular_speed: float = 0.01,
+    ) -> list[FrameGatewayFrame]:
+        session = await self._get_session()
+        async with session.get(
+            f"{self.base_url}/sessions/{session_id}/frames/select",
+            params={
+                "limit": max(1, int(n or 1)),
+                "policy": policy,
+                "status": status,
+                "min_speed": min_speed,
+                "min_angular_speed": min_angular_speed,
+            },
+        ) as resp:
+            if resp.status != 200:
+                return []
+            data = await resp.json()
+        raw_frames = data.get("frames", []) if isinstance(data, dict) else []
+        return [FrameGatewayFrame.from_payload(item) for item in raw_frames if isinstance(item, dict)]
+
 
 def _optional_int(value: Any) -> int | None:
     try:
