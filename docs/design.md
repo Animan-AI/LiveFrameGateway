@@ -11,6 +11,16 @@ The project targets two audiences:
 
 The first release is a reusable product, not a full robot assistant. It intentionally excludes ASR, TTS, memory, tool execution, motion control, proactive planning, private model backends, and lower-level encoder-cache implementations.
 
+## Originality Positioning
+
+LiveFrameGateway should not claim to be the first ViT cache or encoder cache system. Existing systems cover lower-level encoder-output caching.
+
+The defensible open-source positioning is:
+
+> A lightweight, backend-agnostic real-time frame gateway for VLM and embodied agents, combining session-scoped ready-frame rings, OpenAI-compatible frame injection, optional encoder-cache priming, eviction hooks, and robot observation metadata.
+
+The practical contribution is reducing perceived latency in live camera interactions by moving frame capture, frame normalization, frame readiness, selection, and optional encoder priming out of the user's query path. When the user asks a visual question, the agent can inject an already available frame window instead of first locating, validating, uploading, or encoding the relevant frames.
+
 ## Product Shape
 
 Repository path:
@@ -53,7 +63,8 @@ Request fields:
 - `mime_type`: defaults to `image/jpeg` when base64 is supplied
 - `source`: such as `camera`, `robot_stream`, `app_upload`, `surface_attachment`
 - `digest`: optional content hash
-- robot metadata: `device_id`, `user_id`, `seq`, `behavior_chunk_id`, `behavior_episode_id`, `scan_plan_id`, `scan_phase`, `coverage_bin`, `target_pose`, `pose_state`, `motion_state`, `quality`
+- robot metadata: `device_id`, `user_id`, `seq`, `pose_state`, `motion_state`, `quality`
+- `robot_ext`: optional extension object for robot-specific fields such as `scan_phase`, `coverage_bin`, `target_pose`, and `behavior_episode_id`
 
 Response:
 
@@ -102,6 +113,31 @@ Response:
 
 Ordering is old-to-new within the returned latest K window. This makes direct multi-frame VLM injection natural for change-detection prompts.
 
+### Select Frames By Policy
+
+```http
+GET /sessions/{session_id}/frames/select?limit=K&policy=quality
+```
+
+Response:
+
+```json
+{
+  "policy": "quality",
+  "frames": [
+    {
+      "session_id": "sess_1",
+      "frame_uuid": "frame_001",
+      "ts_ms": 1778880000000,
+      "status": "ready",
+      "image_url": "data:image/jpeg;base64,..."
+    }
+  ]
+}
+```
+
+Supported policies are `latest`, `quality`, and `motion`.
+
 ### Health
 
 ```http
@@ -142,6 +178,14 @@ Each session gets its own ring. The ring size is global in the first release. Wh
 
 The store also tracks `session_last_seen` and prunes stale sessions on a bounded interval. Stale session pruning evicts all records for that session and runs the same cleanup hook.
 
+### Selection Policies
+
+Frame selection operates over ready frames in the session ring:
+
+- `latest`: returns the latest K ready frames in old-to-new order within the returned window.
+- `quality`: prefers frames with low `quality.blur_score` and high `quality.confidence`.
+- `motion`: prefers frames where `motion_state.speed` or `motion_state.angular_speed` exceeds a threshold.
+
 ### Encoder Primer
 
 The first release supports a generic HTTP primer adapter.
@@ -176,15 +220,11 @@ It returns a new message list whose final user message contains image items foll
 
 The helper does not call a model. Agent runtimes remain responsible for deciding whether vision is needed, how many frames to select, and which VLM backend to call.
 
-## Originality Positioning
+### Benchmark Scope
 
-LiveFrameGateway should not claim to be the first ViT cache or encoder cache system. Existing systems cover lower-level encoder-output caching.
+The replay benchmark measures synthetic request-preparation latency, not model latency. It compares inline request preparation against a gateway path where frame ingest, normalization, selection, and readiness work can happen before the user asks a visual question.
 
-The defensible open-source positioning is:
-
-> A lightweight, backend-agnostic real-time frame gateway for VLM and embodied agents, combining session-scoped ready-frame rings, OpenAI-compatible frame injection, optional encoder-cache priming, eviction hooks, and robot observation metadata.
-
-The practical contribution is reducing perceived latency in live camera interactions by moving frame capture, frame normalization, frame readiness, and optional encoder priming out of the user's query path. When the user asks a visual question, the agent can inject an already available latest-K frame window instead of first locating, validating, uploading, or encoding the relevant frames.
+Benchmark output in the README is local example output from this repository. It should not be presented as a universal model latency claim.
 
 ## Roadmap
 
