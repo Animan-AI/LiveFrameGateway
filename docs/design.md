@@ -194,6 +194,14 @@ The primer is optional. When configured, it is called during ingest with the nor
 
 This synchronous primer behavior is intentionally simple for the MVP. A later async mode can store `pending`, run the primer in the background, then update the record to `ready` or `failed`.
 
+The core package does not include a full ViT encoder service. A production deployment can attach a separate encoder-only service through the primer hook, but the exact cache format and retrieval semantics belong to that backend. For example, a vLLM-compatible encoder producer can write an external `encoder_cache.safetensors` file keyed by `frame_uuid`, while a consumer backend may still require image bytes unless its request path can resolve uuid-only inputs from that external cache.
+
+Therefore, public claims should distinguish:
+
+- gateway-level readiness: the frame is captured, uploaded, normalized, selected, and available before the user asks
+- primer-level readiness: an optional backend has completed its encoder priming work
+- consumer-level cache hit: the final VLM request can actually consume the prepared frame or encoder cache without re-uploading or re-encoding image bytes
+
 ### Message Injection
 
 The package provides:
@@ -225,6 +233,22 @@ The helper does not call a model. Agent runtimes remain responsible for deciding
 The replay benchmark measures synthetic request-preparation latency, not model latency. It compares inline request preparation against a gateway path where frame ingest, normalization, selection, and readiness work can happen before the user asks a visual question.
 
 Benchmark output in the README is local example output from this repository. It should not be presented as a universal model latency claim.
+
+The live vLLM probe measures a real OpenAI-compatible backend if one is already running. It intentionally separates direct image requests, `image_url + uuid` requests, fresh `uuid-only` requests, and `uuid-only` requests after the consumer has seen the same UUID. This prevents over-claiming: `uuid-only` success after a local consumer-cache warmup is not the same thing as fresh external encoder-cache consumption.
+
+The question-path probe estimates perceived latency more directly. Without device-side timestamps, it measures only the server-side portion after an image is already available. With a real `capture_upload_ms` measurement from the robot or edge client, it can estimate the traditional user path:
+
+```text
+question -> capture -> encode -> upload -> VLM first token
+```
+
+and compare it with the ready-frame path:
+
+```text
+question -> fetch latest ready frame -> VLM first token
+```
+
+This distinction is required for honest reporting. Server-side VLM numbers alone do not include camera exposure, image encoding, network upload, or device playback.
 
 ## Roadmap
 
