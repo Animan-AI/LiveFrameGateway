@@ -21,19 +21,20 @@ LiveFrameGateway 将沉重的处理工作**提前到提问之前**：
 
 ---
 
-## 🤖 对比：LiveFrameGateway vs. 豆包 / MiniCPM-V 4.6 等原生模型
+## 🤖 对比：实时音视频模型/API 与语音 Agent
 
-这是否是 **豆包 (Doubao)** 或 **MiniCPM-V 4.6** 等实时多模态模型的竞争对手？**不，它是它们的基础设施。**
+这是否是 **豆包视频通话/实时音视频能力**、**Gemini Live API**、**MiniCPM-o 4.5**、**Qwen2.5-Omni** 或 **OpenAI Realtime API (`gpt-realtime`)** 的竞争对手？**不是，它是它们的基础设施。**
 
-虽然豆包等云端模型提供了极佳的对话体验，MiniCPM-V 4.6 展现了强大的多模态能力，但 LiveFrameGateway 解决的是**视觉数据如何高效流向这些“大脑”**的工程问题：
+这些系统是模型/API 层，侧重低延迟交互。根据不同提供方，它们可能处理语音到语音、音视频流、图像输入、文本和流式输出。LiveFrameGateway 解决的是它们周围的**视觉上下文生命周期**：让机器人相机帧在模型调用前就已经 ready、可追踪、可选择、可注入。
 
-| 特性 | 豆包 / MiniCPM-V 4.6 原生交互 | LiveFrameGateway 方案 |
+| 特性 | 实时音视频模型/API | LiveFrameGateway 方案 |
 | :--- | :--- | :--- |
-| **设计哲学** | 端到端推理与流式输出 | 通过异步预处理“屏蔽”传输与准备延迟 |
-| **元数据** | 纯像素输入 | 像素 + **机器人状态** (姿态/运动/扫描进度) |
-| **带宽压力** | 往往需要持续的高带宽流 | **选择性推送**，仅在关键帧或按需预加载 |
-| **端侧适配** | 依赖模型本身的轻量化 | **后端无关**，让轻量化模型也能访问历史高质量帧 |
-| **场景定位** | 开放域人机对话 | 具身智能体感知、低延迟视觉问答与回溯 |
+| **角色** | 端到端交互模型或运行时 | 后端无关的视觉上下文基础设施 |
+| **实时重点** | 流式音频/视频/文本 I/O 和语音响应 | 提问前的帧就绪、选择与注入 |
+| **视觉输入** | 由模型/提供方定义的实时流或抽样帧 | 显式 ready-frame ring + 稳定 `frame_uuid` |
+| **元数据** | 通常只是模型输入 payload | 像素 + **机器人状态** (姿态/运动/质量/扫描元数据) |
+| **控制性** | 优化对话即时性 | 优化机器人可追踪性、缓存预热和帧生命周期 |
+| **兼容性** | 依赖具体提供方或模型 | 可配合 vLLM、SGLang、托管 VLM 和 realtime API 使用 |
 
 ---
 
@@ -68,7 +69,7 @@ LiveFrameGateway 将沉重的处理工作**提前到提问之前**：
 
 ### 1. 安装
 ```bash
-pip install "liveframegateway[dev] @ git+https://github.com/your-username/LiveFrameGateway.git"
+pip install "liveframegateway[dev] @ git+https://github.com/Animan-AI/LiveFrameGateway.git"
 ```
 
 ### 2. 启动 Gateway 服务
@@ -93,7 +94,9 @@ from liveframegateway.injection import inject_openai_messages
 import requests
 
 # 从 gateway 获取选定的帧
-frames = requests.get("http://127.0.0.1:8095/sessions/demo/frames/select?policy=quality").json()
+frames = requests.get(
+    "http://127.0.0.1:8095/sessions/demo/frames/select?policy=quality"
+).json()["frames"]
 
 # 注入到 OpenAI 兼容的消息列表中
 messages = inject_openai_messages(
@@ -115,15 +118,78 @@ messages = inject_openai_messages(
 
 ## 📊 性能评估
 
-使用内置的基准测试套件验证延迟收益：
+使用内置 probe 在你自己的系统上验证延迟收益：
 
 ```bash
-# 衡量请求准备阶段的开销
+# 🧪 衡量请求准备阶段开销
 python benchmarks/replay_latency.py --frames 120 --select-k 3
 
-# 测试端到端提问路径延迟
-python benchmarks/question_path_latency_probe.py --gateway-base-url http://127.0.0.1:8095
+# ⚡ 针对 OpenAI-compatible VLM 测试 server-side 提问路径
+python benchmarks/question_path_latency_probe.py \
+  --gateway-base-url http://127.0.0.1:8095 \
+  --consumer-base-url http://127.0.0.1:8201/v1 \
+  --model your-model-name \
+  --session-id your-session-id
 ```
+
+### 🧪 实机测试环境
+
+一次 `2026-05-17` 的真实机器人部署测试：
+
+| 项目 | 取值 |
+| :--- | :--- |
+| 📷 设备流 | Orange Pi 相机帧 |
+| 🔄 Gateway 模式 | ready-frame ring + 外部 encoder primer |
+| 🧠 VLM 后端 | 本地 vLLM OpenAI-compatible 服务 |
+| 🏷️ 模型 | `qwen36-35b-a3b-awq` |
+| 🔁 迭代次数 | `10` |
+
+### ⚡ 实测结果
+
+| 指标 | 传统 direct image | Ready-frame path | 差值 |
+| :--- | ---: | ---: | ---: |
+| Server-side TTFT p50 | `283.0 ms` | `228.8 ms` | `-54.9 ms` |
+| Server-side TTFT p95 | `341.3 ms` | `243.1 ms` | `-98.2 ms` |
+| VLM 请求总耗时 p50 | `301.5 ms` | `248.4 ms` | `-53.1 ms` |
+| latest-frame fetch p50 | N/A | `~2.3 ms` | N/A |
+
+### 🔧 帧准备成本
+
+| 准备阶段 | p50 | p95 | 来源 |
+| :--- | ---: | ---: | :--- |
+| 设备帧时间戳 -> server ingest | `57 ms` | `72 ms` | 最近 120 条私有部署 ingest 日志 |
+| 设备帧时间戳 -> 外部 encoder-cache 文件 ready | `134 ms` | `157 ms` | 最近 encoder-cache artifacts |
+
+### 🧮 估算体感 TTFT
+
+LiveFrameGateway 不需要再做一次“是否拍照”的判定。视觉上下文已经持续维护，构建 VLM 请求时可以直接选择并注入 ready frames。
+
+```text
+🐢 按需拍照
+   ~= 拍照/视觉意图路由 + 拍图/上传 + direct VLM TTFT
+   ~= R_photo_route + 57 ms + 283 ms
+   ~= R_photo_route + 340 ms
+
+🚀 Ready-frame
+   ~= latest-frame fetch + ready-frame VLM TTFT
+   ~= 2 ms + 229 ms
+   ~= 231 ms
+
+✅ 估算 p50 节省 ~= R_photo_route + 109 ms
+```
+
+如果某个部署在用户提问后还需要等待外部 encoder-primer/cache 步骤，那么被提前隐藏的准备窗口更接近 `134 ms`，估算 p50 节省约为：
+
+```text
+✅ R_photo_route + 186 ms
+```
+
+### ⚠️ 适用边界
+
+- 如果应用层在所有模型调用前都有一个通用对话 router，这个共享 router 不应计入视觉路径对比。
+- 上述数字是具体部署下的示例，不是通用结论。
+- 这些数字**不包含** ASR、文本规划、TTS 合成、音频下发或端侧播放。
+- 它们只衡量视觉提问路径到 VLM first token 的部分。
 
 ---
 

@@ -21,19 +21,20 @@ LiveFrameGateway moves the heavy lifting **ahead of the question**:
 
 ---
 
-## 🤖 vs. End-to-End Realtime Models
+## 🤖 vs. Realtime Audio/Video Models & Voice Agents
 
-Is this a competitor to GPT-4o or Gemini 1.5 Pro's native audio-visual streaming? **No, it is infrastructure.**
+Is this a competitor to modern realtime multimodal systems such as **Gemini Live API**, **OpenAI Realtime API** (`gpt-realtime`), **MiniCPM-o 4.5**, or **Qwen2.5-Omni**? **No, it is infrastructure.**
 
-While end-to-end models focus on token-level streaming, LiveFrameGateway provides the **engineering lifecycle** required for robots and agents to use *any* VLM effectively:
+Those systems are model/API layers for low-latency interaction: depending on the provider, they handle speech-to-speech, audio/video streams, image inputs, text, and streamed responses. LiveFrameGateway is the **visual context lifecycle layer** around them: it keeps robot camera frames ready, traceable, selectable, and injectable before the model call.
 
-| Feature | End-to-End Realtime Models | LiveFrameGateway Approach |
+| Feature | Realtime Audio/Video Models & APIs | LiveFrameGateway Approach |
 | :--- | :--- | :--- |
-| **Philosophy** | Native multimodal streaming | Latency masking via async prep |
-| **Metadata** | Pure pixels | Pixels + **Robot State** (Pose/Motion) |
-| **Bandwidth** | Constant high-bitrate stream | Selective, on-demand or pre-loading |
-| **Flexibility** | Provider-specific | **Backend-agnostic** (vLLM, Claude, etc.) |
-| **Use Case** | Human-AI conversation | Robot vision & low-latency interaction |
+| **Role** | End-to-end interactive model/runtime | Backend-agnostic visual context infrastructure |
+| **Realtime focus** | Streaming audio/video/text I/O and spoken responses | Pre-question frame readiness, selection, and injection |
+| **Visual input** | Provider/model-defined live stream or sampled frames | Explicit ready-frame ring with stable `frame_uuid` |
+| **Metadata** | Usually model input payload only | Pixels + **Robot State** (pose, motion, quality, scan metadata) |
+| **Control** | Optimized for conversational immediacy | Optimized for robotics traceability, cache priming, and frame lifecycle |
+| **Compatibility** | Provider/model-specific | Works beside vLLM, SGLang, hosted VLMs, and realtime APIs |
 
 ---
 
@@ -68,7 +69,7 @@ While end-to-end models focus on token-level streaming, LiveFrameGateway provide
 
 ### 1. Install
 ```bash
-pip install "liveframegateway[dev] @ git+https://github.com/your-username/LiveFrameGateway.git"
+pip install "liveframegateway[dev] @ git+https://github.com/Animan-AI/LiveFrameGateway.git"
 ```
 
 ### 2. Start the Gateway
@@ -93,7 +94,9 @@ from liveframegateway.injection import inject_openai_messages
 import requests
 
 # Fetch selected frames from the gateway
-frames = requests.get("http://127.0.0.1:8095/sessions/demo/frames/select?policy=quality").json()
+frames = requests.get(
+    "http://127.0.0.1:8095/sessions/demo/frames/select?policy=quality"
+).json()["frames"]
 
 # Inject into OpenAI-compatible messages
 messages = inject_openai_messages(
@@ -115,15 +118,78 @@ messages = inject_openai_messages(
 
 ## 📊 Measuring Impact
 
-Prove your latency gains with our built-in benchmarking suite:
+Use the built-in probes to measure your own stack:
 
 ```bash
-# Measure request preparation overhead
+# 🧪 Request preparation overhead
 python benchmarks/replay_latency.py --frames 120 --select-k 3
 
-# Test end-to-end question-path latency
-python benchmarks/question_path_latency_probe.py --gateway-base-url http://127.0.0.1:8095
+# ⚡ Server-side question path against an OpenAI-compatible VLM
+python benchmarks/question_path_latency_probe.py \
+  --gateway-base-url http://127.0.0.1:8095 \
+  --consumer-base-url http://127.0.0.1:8201/v1 \
+  --model your-model-name \
+  --session-id your-session-id
 ```
+
+### 🧪 Live Setup
+
+One live robotics deployment run on `2026-05-17`:
+
+| Item | Value |
+| :--- | :--- |
+| 📷 Device stream | Orange Pi camera frames |
+| 🔄 Gateway mode | ready-frame ring + external encoder primer |
+| 🧠 VLM backend | local vLLM OpenAI-compatible server |
+| 🏷️ Model | `qwen36-35b-a3b-awq` |
+| 🔁 Iterations | `10` |
+
+### ⚡ Measured Result
+
+| Metric | Traditional direct image | Ready-frame path | Delta |
+| :--- | ---: | ---: | ---: |
+| Server-side TTFT p50 | `283.0 ms` | `228.8 ms` | `-54.9 ms` |
+| Server-side TTFT p95 | `341.3 ms` | `243.1 ms` | `-98.2 ms` |
+| Total VLM request p50 | `301.5 ms` | `248.4 ms` | `-53.1 ms` |
+| Latest-frame fetch p50 | N/A | `~2.3 ms` | N/A |
+
+### 🔧 Preparation Cost
+
+| Preparation stage | p50 | p95 | Source |
+| :--- | ---: | ---: | :--- |
+| Device frame timestamp -> server ingest | `57 ms` | `72 ms` | last 120 private deployment ingest logs |
+| Device frame timestamp -> external encoder-cache file ready | `134 ms` | `157 ms` | recent encoder-cache artifacts |
+
+### 🧮 Estimated Perceived TTFT
+
+LiveFrameGateway does not need a second "should we take a photo?" decision. Visual context is already maintained, so the ready-frame path can select and inject frames directly.
+
+```text
+🐢 Photo-on-demand
+   ~= photo/vision intent routing + capture/upload + direct VLM TTFT
+   ~= R_photo_route + 57 ms + 283 ms
+   ~= R_photo_route + 340 ms
+
+🚀 Ready-frame
+   ~= latest-frame fetch + ready-frame VLM TTFT
+   ~= 2 ms + 229 ms
+   ~= 231 ms
+
+✅ Estimated p50 saving ~= R_photo_route + 109 ms
+```
+
+If a deployment would otherwise wait for an external encoder-primer/cache step after the question, the avoided preparation window is closer to `134 ms`, making the estimated p50 saving about:
+
+```text
+✅ R_photo_route + 186 ms
+```
+
+### ⚠️ Scope
+
+- A shared dialogue router before every model call is outside this visual-path comparison.
+- The numbers above are deployment-specific examples, not universal claims.
+- They do **not** include ASR, LLM text planning, TTS synthesis, audio download, or device playback.
+- They measure the visual question path up to VLM first token.
 
 ---
 
