@@ -1,5 +1,7 @@
 # 🚀 LiveFrameGateway
 
+[🇨🇳 简体中文](README.zh-CN.md) | [🇺🇸 English](README.md)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
